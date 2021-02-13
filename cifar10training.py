@@ -5,6 +5,7 @@ import torchvision.transforms as transforms
 import torch.optim as optim
 import torch.nn.functional as F
 from vgg import VGG
+import os
 
 def train(epoch):
     print(f"epoch number {epoch}")

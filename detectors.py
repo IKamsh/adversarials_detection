@@ -115,13 +115,15 @@ class Filter_detector():
         size: size of kernel, int
     '''
     
-    def __init__(self, model, size=3):
+    def __init__(self, model, filt=Median_pooling, size=3):
         self.network = model
         self.size = size
+        self.filt = filt(kernel_size=self.size, same=True)
         
     def predict(self, X_loader):
         """X_loader - torch dataloader"""
-        medPool = Median_pooling(kernel_size=size, same=True)
+        
+        assert type(X_loader) == torch.utils.data.dataloader.DataLoader
         
         pre_filtered_pred = []
         for x, y in X_loader:
@@ -133,9 +135,89 @@ class Filter_detector():
         
         filtered_pred = []
         for x, y in X_loader:
-            x_fil = medPool(x).to(device)
+            x_fil = self.filt(x).to(device)
             outputs = torch.argmax(self.network(x_fil), axis=1).detach().cpu().numpy()
             filtered_pred.extend(outputs)
         filtered_pred = np.array(filtered_pred)
         
         return pre_filtered_pred != filtered_pred
+    
+    
+class Combined_det():
+    '''Adversarial examples detector based on ml model
+    
+    Args:
+        network - your torch NN used to compute softmax distribution
+        detector - ML model with sklearn API
+    '''
+    
+    def __init__(self, network, detector, filt=Median_pooling(kernel_size=3, same=True)):
+        self.network = network
+        self.detector = detector
+        self.filt = filt
+        
+    def fit(self, X_real, X_adversarial):
+        '''   
+        X_real - torch dataloader
+        X_adversarial - torch dataloader
+        '''
+        assert type(X_real) == torch.utils.data.dataloader.DataLoader
+        assert type(X_adversarial) == torch.utils.data.dataloader.DataLoader
+        
+        X_softmax = []
+        
+        for x, y in X_real:
+            x = x.to(device)
+            outputs = F.softmax(self.network(x)).detach().cpu()
+            argmax = torch.argmax(outputs, axis=1)
+            x_fil = self.filt(x).to(device)
+            argmax_filt = torch.argmax(self.network(x_fil), axis=1).detach().cpu()
+            
+            flags = (argmax != argmax_filt).unsqueeze(1)
+            outputs = torch.cat([outputs, flags], axis=1).numpy()
+            
+            X_softmax.extend(outputs)
+        
+
+        for x, y in X_adversarial:
+            x = x.to(device)
+            outputs = F.softmax(self.network(x)).detach().cpu()
+            argmax = torch.argmax(outputs, axis=1)
+            x_fil = self.filt(x).to(device)
+            argmax_filt = torch.argmax(self.network(x_fil), axis=1).detach().cpu()
+            
+            flags = (argmax != argmax_filt).unsqueeze(1)
+            outputs = torch.cat([outputs, flags], axis=1).numpy()
+            
+            X_softmax.extend(outputs)  
+       
+        X_softmax = np.array(X_softmax)
+        
+        y = np.concatenate((np.array([0] * len(X_real.dataset)),
+                            np.array([1] * len(X_adversarial.dataset))))
+        
+        X_softmax, y = shuffle(X_softmax, y)
+        
+        self.detector.fit(X_softmax, y)                    
+            
+    def predict(self, X):
+        '''
+        return result of detection (1 - adversarial, 0 - natural)
+        X - torch dataloader
+        '''
+        X_softmax = []
+        
+        for x, y in X:
+            x = x.to(device)
+            outputs = F.softmax(self.network(x)).detach().cpu()
+            argmax = torch.argmax(outputs, axis=1)
+            x_fil = self.filt(x).to(device)
+            argmax_filt = torch.argmax(self.network(x_fil), axis=1).detach().cpu()
+            
+            flags = (argmax != argmax_filt).unsqueeze(1)
+            outputs = torch.cat([outputs, flags], axis=1).numpy()
+            X_softmax.extend(outputs)
+        
+        
+        X_softmax = np.array(X_softmax)
+        return np.round(self.detector.predict(X_softmax))

@@ -11,7 +11,7 @@ Detector algorithms are in <code>detectors.py</code>
 ### Adversarial examples
 
 Original image: \
-![alt text](https://github.com/IKamsh/adversarials_detection/blob/main/img/dog.PNG)
+![alt text](https://github.com/IKamsh/adversarials_detection/blob/main/img/dog.PNG) \
 The same image with small perturbations: \
 ![alt text](https://github.com/IKamsh/adversarials_detection/blob/main/img/adv_dog.PNG)
 
